@@ -81,7 +81,7 @@ namespace Emby.Server.Implementations.Images
         {
             var image = item.GetImageInfo(imageType, 0);
 
-            if (image != null)
+            if (image is not null)
             {
                 if (!image.IsLocalFile)
                 {
@@ -135,7 +135,7 @@ namespace Emby.Server.Implementations.Images
 
         protected virtual IEnumerable<string> GetStripCollageImagePaths(BaseItem primaryItem, IEnumerable<BaseItem> items)
         {
-            var useBackdrop = primaryItem is CollectionFolder;
+            var useBackdrop = primaryItem is CollectionFolder || primaryItem is UserView;
             return items
                 .Select(i =>
                 {
@@ -143,20 +143,20 @@ namespace Emby.Server.Implementations.Images
                     if (useBackdrop)
                     {
                         var backdrop = i.GetImageInfo(ImageType.Backdrop, 0);
-                        if (backdrop != null && backdrop.IsLocalFile)
+                        if (backdrop is not null && backdrop.IsLocalFile)
                         {
                             return backdrop.Path;
                         }
                     }
 
                     var image = i.GetImageInfo(ImageType.Primary, 0);
-                    if (image != null && image.IsLocalFile)
+                    if (image is not null && image.IsLocalFile)
                     {
                         return image.Path;
                     }
 
                     image = i.GetImageInfo(ImageType.Thumb, 0);
-                    if (image != null && image.IsLocalFile)
+                    if (image is not null && image.IsLocalFile)
                     {
                         return image.Path;
                     }
@@ -268,7 +268,7 @@ namespace Emby.Server.Implementations.Images
         {
             var image = item.GetImageInfo(type, 0);
 
-            if (image != null)
+            if (image is not null)
             {
                 if (!image.IsLocalFile)
                 {

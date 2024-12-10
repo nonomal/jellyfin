@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -34,7 +34,8 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
     public string CreateMainPlaylist(CreateMainPlaylistRequest request)
     {
         IReadOnlyList<double> segments;
-        if (TryExtractKeyframes(request.FilePath, out var keyframeData))
+        // For video transcodes it is sufficient with equal length segments as ffmpeg will create new keyframes
+        if (request.IsRemuxingVideo && TryExtractKeyframes(request.FilePath, out var keyframeData))
         {
             segments = ComputeSegments(keyframeData, request.DesiredSegmentLengthMs);
         }
@@ -46,7 +47,7 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
         var segmentExtension = EncodingHelper.GetSegmentFileExtension(request.SegmentContainer);
 
         // http://ffmpeg.org/ffmpeg-all.html#toc-hls-2
-        var isHlsInFmp4 = string.Equals(segmentExtension, "mp4", StringComparison.OrdinalIgnoreCase);
+        var isHlsInFmp4 = string.Equals(segmentExtension, ".mp4", StringComparison.OrdinalIgnoreCase);
         var hlsVersion = isHlsInFmp4 ? "7" : "3";
 
         var builder = new StringBuilder(128);
@@ -65,11 +66,14 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
 
         if (isHlsInFmp4)
         {
+            // Init file that only includes fMP4 headers
             builder.Append("#EXT-X-MAP:URI=\"")
                 .Append(request.EndpointPrefix)
                 .Append("-1")
                 .Append(segmentExtension)
                 .Append(request.QueryString)
+                .Append("&runtimeTicks=0")
+                .Append("&actualSegmentLengthTicks=0")
                 .Append('"')
                 .AppendLine();
         }
@@ -124,7 +128,7 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
         return false;
     }
 
-    internal static bool IsExtractionAllowedForFile(ReadOnlySpan<char> filePath, string[] allowedExtensions)
+    internal static bool IsExtractionAllowedForFile(ReadOnlySpan<char> filePath, IReadOnlyList<string> allowedExtensions)
     {
         var extension = Path.GetExtension(filePath);
         if (extension.IsEmpty)
@@ -134,7 +138,7 @@ public class DynamicHlsPlaylistGenerator : IDynamicHlsPlaylistGenerator
 
         // Remove the leading dot
         var extensionWithoutDot = extension[1..];
-        for (var i = 0; i < allowedExtensions.Length; i++)
+        for (var i = 0; i < allowedExtensions.Count; i++)
         {
             var allowedExtension = allowedExtensions[i].AsSpan().TrimStart('.');
             if (extensionWithoutDot.Equals(allowedExtension, StringComparison.OrdinalIgnoreCase))

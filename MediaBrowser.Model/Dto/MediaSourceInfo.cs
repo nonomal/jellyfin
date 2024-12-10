@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
+using Jellyfin.Data.Enums;
+using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Session;
@@ -15,13 +18,14 @@ namespace MediaBrowser.Model.Dto
         public MediaSourceInfo()
         {
             Formats = Array.Empty<string>();
-            MediaStreams = new List<MediaStream>();
+            MediaStreams = Array.Empty<MediaStream>();
             MediaAttachments = Array.Empty<MediaAttachment>();
             RequiredHttpHeaders = new Dictionary<string, string>();
             SupportsTranscoding = true;
             SupportsDirectStream = true;
             SupportsDirectPlay = true;
             SupportsProbing = true;
+            UseMostCompatibleTranscodingProfile = false;
         }
 
         public MediaProtocol Protocol { get; set; }
@@ -68,6 +72,9 @@ namespace MediaBrowser.Model.Dto
 
         public bool IsInfiniteStream { get; set; }
 
+        [DefaultValue(false)]
+        public bool UseMostCompatibleTranscodingProfile { get; set; }
+
         public bool RequiresOpening { get; set; }
 
         public string OpenToken { get; set; }
@@ -88,7 +95,7 @@ namespace MediaBrowser.Model.Dto
 
         public Video3DFormat? Video3DFormat { get; set; }
 
-        public List<MediaStream> MediaStreams { get; set; }
+        public IReadOnlyList<MediaStream> MediaStreams { get; set; }
 
         public IReadOnlyList<MediaAttachment> MediaAttachments { get; set; }
 
@@ -96,24 +103,28 @@ namespace MediaBrowser.Model.Dto
 
         public int? Bitrate { get; set; }
 
+        public int? FallbackMaxStreamingBitrate { get; set; }
+
         public TransportStreamTimestamp? Timestamp { get; set; }
 
         public Dictionary<string, string> RequiredHttpHeaders { get; set; }
 
         public string TranscodingUrl { get; set; }
 
-        public string TranscodingSubProtocol { get; set; }
+        public MediaStreamProtocol TranscodingSubProtocol { get; set; }
 
         public string TranscodingContainer { get; set; }
 
         public int? AnalyzeDurationMs { get; set; }
 
         [JsonIgnore]
-        public TranscodeReason[] TranscodeReasons { get; set; }
+        public TranscodeReason TranscodeReasons { get; set; }
 
         public int? DefaultAudioStreamIndex { get; set; }
 
         public int? DefaultSubtitleStreamIndex { get; set; }
+
+        public bool HasSegments { get; set; }
 
         [JsonIgnore]
         public MediaStream VideoStream
@@ -134,7 +145,7 @@ namespace MediaBrowser.Model.Dto
 
         public void InferTotalBitrate(bool force = false)
         {
-            if (MediaStreams == null)
+            if (MediaStreams is null)
             {
                 return;
             }
@@ -161,7 +172,7 @@ namespace MediaBrowser.Model.Dto
 
         public MediaStream GetDefaultAudioStream(int? defaultIndex)
         {
-            if (defaultIndex.HasValue)
+            if (defaultIndex.HasValue && defaultIndex != -1)
             {
                 var val = defaultIndex.Value;
 
@@ -230,19 +241,15 @@ namespace MediaBrowser.Model.Dto
 
         public bool? IsSecondaryAudio(MediaStream stream)
         {
-            // Look for the first audio track marked as default
-            foreach (var currentStream in MediaStreams)
+            if (stream.IsExternal)
             {
-                if (currentStream.Type == MediaStreamType.Audio && currentStream.IsDefault)
-                {
-                    return currentStream.Index != stream.Index;
-                }
+                return false;
             }
 
             // Look for the first audio track
             foreach (var currentStream in MediaStreams)
             {
-                if (currentStream.Type == MediaStreamType.Audio)
+                if (currentStream.Type == MediaStreamType.Audio && !currentStream.IsExternal)
                 {
                     return currentStream.Index != stream.Index;
                 }

@@ -1,4 +1,4 @@
-﻿#nullable disable
+#nullable disable
 
 #pragma warning disable CS1591
 
@@ -76,10 +76,22 @@ namespace MediaBrowser.Controller.MediaEncoding
         public string Profile { get; set; }
 
         /// <summary>
+        /// Gets or sets the video range type.
+        /// </summary>
+        /// <value>The video range type.</value>
+        public string VideoRangeType { get; set; }
+
+        /// <summary>
         /// Gets or sets the level.
         /// </summary>
         /// <value>The level.</value>
         public string Level { get; set; }
+
+        /// <summary>
+        /// Gets or sets the codec tag.
+        /// </summary>
+        /// <value>The codec tag.</value>
+        public string CodecTag { get; set; }
 
         /// <summary>
         /// Gets or sets the framerate.
@@ -178,6 +190,10 @@ namespace MediaBrowser.Controller.MediaEncoding
         public EncodingContext Context { get; set; }
 
         public Dictionary<string, string> StreamOptions { get; set; }
+
+        public bool EnableAudioVbrEncoding { get; set; }
+
+        public bool AlwaysBurnInSubtitleWhenTranscoding { get; set; }
 
         public string GetOption(string qualifier, string name)
         {

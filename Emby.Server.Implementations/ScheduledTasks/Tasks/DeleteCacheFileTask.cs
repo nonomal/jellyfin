@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.IO;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Tasks;
@@ -66,32 +67,24 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
         /// <inheritdoc />
         public bool IsLogged => true;
 
-        /// <summary>
-        /// Creates the triggers that define when the task will run.
-        /// </summary>
-        /// <returns>IEnumerable{BaseTaskTrigger}.</returns>
+        /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            return new[]
-            {
+            return
+            [
                 // Every so often
-                new TaskTriggerInfo { Type = TaskTriggerInfo.TriggerInterval, IntervalTicks = TimeSpan.FromHours(24).Ticks }
-            };
+                new TaskTriggerInfo { Type = TaskTriggerInfoType.IntervalTrigger, IntervalTicks = TimeSpan.FromHours(24).Ticks }
+            ];
         }
 
-        /// <summary>
-        /// Returns the task to be executed.
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <param name="progress">The progress.</param>
-        /// <returns>Task.</returns>
-        public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
+        /// <inheritdoc />
+        public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
             var minDateModified = DateTime.UtcNow.AddDays(-30);
 
             try
             {
-                DeleteCacheFilesFromDirectory(cancellationToken, _applicationPaths.CachePath, minDateModified, progress);
+                DeleteCacheFilesFromDirectory(_applicationPaths.CachePath, minDateModified, progress, cancellationToken);
             }
             catch (DirectoryNotFoundException)
             {
@@ -104,7 +97,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
 
             try
             {
-                DeleteCacheFilesFromDirectory(cancellationToken, _applicationPaths.TempDirectory, minDateModified, progress);
+                DeleteCacheFilesFromDirectory(_applicationPaths.TempDirectory, minDateModified, progress, cancellationToken);
             }
             catch (DirectoryNotFoundException)
             {
@@ -117,11 +110,11 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
         /// <summary>
         /// Deletes the cache files from directory with a last write time less than a given date.
         /// </summary>
-        /// <param name="cancellationToken">The task cancellation token.</param>
         /// <param name="directory">The directory.</param>
         /// <param name="minDateModified">The min date modified.</param>
         /// <param name="progress">The progress.</param>
-        private void DeleteCacheFilesFromDirectory(CancellationToken cancellationToken, string directory, DateTime minDateModified, IProgress<double> progress)
+        /// <param name="cancellationToken">The task cancellation token.</param>
+        private void DeleteCacheFilesFromDirectory(string directory, DateTime minDateModified, IProgress<double> progress, CancellationToken cancellationToken)
         {
             var filesToDelete = _fileSystem.GetFiles(directory, true)
                 .Where(f => _fileSystem.GetLastWriteTimeUtc(f) < minDateModified)
@@ -138,53 +131,14 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                DeleteFile(file.FullName);
+                FileSystemHelper.DeleteFile(_fileSystem, file.FullName, _logger);
 
                 index++;
             }
 
-            DeleteEmptyFolders(directory);
+            FileSystemHelper.DeleteEmptyFolders(_fileSystem, directory, _logger);
 
             progress.Report(100);
-        }
-
-        private void DeleteEmptyFolders(string parent)
-        {
-            foreach (var directory in _fileSystem.GetDirectoryPaths(parent))
-            {
-                DeleteEmptyFolders(directory);
-                if (!_fileSystem.GetFileSystemEntryPaths(directory).Any())
-                {
-                    try
-                    {
-                        Directory.Delete(directory, false);
-                    }
-                    catch (UnauthorizedAccessException ex)
-                    {
-                        _logger.LogError(ex, "Error deleting directory {Path}", directory);
-                    }
-                    catch (IOException ex)
-                    {
-                        _logger.LogError(ex, "Error deleting directory {Path}", directory);
-                    }
-                }
-            }
-        }
-
-        private void DeleteFile(string path)
-        {
-            try
-            {
-                _fileSystem.DeleteFile(path);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                _logger.LogError(ex, "Error deleting file {Path}", path);
-            }
-            catch (IOException ex)
-            {
-                _logger.LogError(ex, "Error deleting file {Path}", path);
-            }
         }
     }
 }

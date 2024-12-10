@@ -12,6 +12,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Library.Resolvers
 {
@@ -22,19 +23,25 @@ namespace Emby.Server.Implementations.Library.Resolvers
     public abstract class BaseVideoResolver<T> : MediaBrowser.Controller.Resolvers.ItemResolver<T>
         where T : Video, new()
     {
-        protected BaseVideoResolver(NamingOptions namingOptions)
+        private readonly ILogger _logger;
+
+        protected BaseVideoResolver(ILogger logger, NamingOptions namingOptions, IDirectoryService directoryService)
         {
+            _logger = logger;
             NamingOptions = namingOptions;
+            DirectoryService = directoryService;
         }
 
         protected NamingOptions NamingOptions { get; }
+
+        protected IDirectoryService DirectoryService { get; }
 
         /// <summary>
         /// Resolves the specified args.
         /// </summary>
         /// <param name="args">The args.</param>
         /// <returns>`0.</returns>
-        public override T Resolve(ItemResolveArgs args)
+        protected override T Resolve(ItemResolveArgs args)
         {
             return ResolveVideo<T>(args, false);
         }
@@ -61,13 +68,26 @@ namespace Emby.Server.Implementations.Library.Resolvers
                     var filename = child.Name;
                     if (child.IsDirectory)
                     {
-                        if (IsDvdDirectory(child.FullName, filename, args.DirectoryService))
+                        if (IsDvdDirectory(child.FullName, filename, DirectoryService))
                         {
-                            videoType = VideoType.Dvd;
+                            var videoTmp = new TVideoType
+                            {
+                                Path = args.Path,
+                                VideoType = VideoType.Dvd
+                            };
+                            Set3DFormat(videoTmp);
+                            return videoTmp;
                         }
-                        else if (IsBluRayDirectory(filename))
+
+                        if (IsBluRayDirectory(filename))
                         {
-                            videoType = VideoType.BluRay;
+                            var videoTmp = new TVideoType
+                            {
+                                Path = args.Path,
+                                VideoType = VideoType.BluRay
+                            };
+                            Set3DFormat(videoTmp);
+                            return videoTmp;
                         }
                     }
                     else if (IsDvdFile(filename))
@@ -75,7 +95,7 @@ namespace Emby.Server.Implementations.Library.Resolvers
                         videoType = VideoType.Dvd;
                     }
 
-                    if (videoType == null)
+                    if (videoType is null)
                     {
                         continue;
                     }
@@ -89,7 +109,7 @@ namespace Emby.Server.Implementations.Library.Resolvers
                 videoInfo = VideoResolver.Resolve(args.Path, false, NamingOptions, parseName);
             }
 
-            if (videoInfo == null || (!videoInfo.IsStub && !VideoResolver.IsVideoFile(args.Path, NamingOptions)))
+            if (videoInfo is null || (!videoInfo.IsStub && !VideoResolver.IsVideoFile(args.Path, NamingOptions)))
             {
                 return null;
             }
@@ -156,10 +176,11 @@ namespace Emby.Server.Implementations.Library.Resolvers
                 }
                 else
                 {
-                    // use disc-utils, both DVDs and BDs use UDF filesystem
-                    using (var videoFileStream = File.Open(video.Path, FileMode.Open, FileAccess.Read))
-                    using (UdfReader udfReader = new UdfReader(videoFileStream))
+                    try
                     {
+                        // use disc-utils, both DVDs and BDs use UDF filesystem
+                        using var videoFileStream = File.Open(video.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        using UdfReader udfReader = new UdfReader(videoFileStream);
                         if (udfReader.DirectoryExists("VIDEO_TS"))
                         {
                             video.IsoType = IsoType.Dvd;
@@ -168,6 +189,10 @@ namespace Emby.Server.Implementations.Library.Resolvers
                         {
                             video.IsoType = IsoType.BluRay;
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error opening UDF/ISO image: {Value}", video.Path ?? video.Name);
                     }
                 }
             }
@@ -238,7 +263,7 @@ namespace Emby.Server.Implementations.Library.Resolvers
                 return false;
             }
 
-            return directoryService.GetFilePaths(fullPath).Any(i => string.Equals(Path.GetExtension(i), ".vob", StringComparison.OrdinalIgnoreCase));
+            return directoryService.GetFilePaths(fullPath).Any(i => Path.GetExtension(i.AsSpan()).Equals(".vob", StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>

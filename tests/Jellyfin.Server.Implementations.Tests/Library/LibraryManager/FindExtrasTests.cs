@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -77,6 +77,35 @@ public class FindExtrasTests
         Assert.Equal(ExtraType.Trailer, extras[1].ExtraType);
         Assert.Equal(typeof(Trailer), extras[1].GetType());
         Assert.Equal(ExtraType.Sample, extras[2].ExtraType);
+    }
+
+    [Fact]
+    public void FindExtras_SeparateMovieFolder_CleanExtraNames()
+    {
+        var owner = new Movie { Name = "Up", Path = "/movies/Up/Up.mkv" };
+        var paths = new List<string>
+        {
+            "/movies/Up/Up.mkv",
+            "/movies/Up/Recording the audio[Bluray]-behindthescenes.mkv",
+            "/movies/Up/Interview with the dog-interview.mkv",
+            "/movies/Up/shorts/Balloons[1080p].mkv"
+        };
+
+        var files = paths.Select(p => new FileSystemMetadata
+        {
+            FullName = p,
+            IsDirectory = false
+        }).ToList();
+
+        var extras = _libraryManager.FindExtras(owner, files, new DirectoryService(_fileSystemMock.Object)).OrderBy(e => e.ExtraType).ToList();
+
+        Assert.Equal(3, extras.Count);
+        Assert.Equal(ExtraType.BehindTheScenes, extras[0].ExtraType);
+        Assert.Equal("Recording the audio", extras[0].Name);
+        Assert.Equal(ExtraType.Interview, extras[1].ExtraType);
+        Assert.Equal("Interview with the dog", extras[1].Name);
+        Assert.Equal(ExtraType.Short, extras[2].ExtraType);
+        Assert.Equal("Balloons", extras[2].Name);
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-﻿// The MIT License (MIT)
+// The MIT License (MIT)
 //
 // Copyright (c) .NET Foundation and Contributors
 //
@@ -69,17 +69,10 @@ namespace Jellyfin.Server.Infrastructure
         /// <inheritdoc />
         protected override Task WriteFileAsync(ActionContext context, PhysicalFileResult result, RangeItemHeaderValue? range, long rangeLength)
         {
-            if (context == null)
-            {
-                throw new ArgumentNullException(nameof(context));
-            }
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(result);
 
-            if (result == null)
-            {
-                throw new ArgumentNullException(nameof(result));
-            }
-
-            if (range != null && rangeLength == 0)
+            if (range is not null && rangeLength == 0)
             {
                 return Task.CompletedTask;
             }
@@ -92,7 +85,7 @@ namespace Jellyfin.Server.Infrastructure
 
             var response = context.HttpContext.Response;
 
-            if (range != null)
+            if (range is not null)
             {
                 return SendFileAsync(
                     result.FileName,
@@ -108,7 +101,7 @@ namespace Jellyfin.Server.Infrastructure
                 count: null);
         }
 
-        private async Task SendFileAsync(string filePath, HttpResponse response, long offset, long? count)
+        private async Task SendFileAsync(string filePath, HttpResponse response, long offset, long? count, CancellationToken cancellationToken = default)
         {
             var fileInfo = GetFileInfo(filePath);
             if (offset < 0 || offset > fileInfo.Length)
@@ -125,18 +118,30 @@ namespace Jellyfin.Server.Infrastructure
             // Copied from SendFileFallback.SendFileAsync
             const int BufferSize = 1024 * 16;
 
-            await using var fileStream = new FileStream(
+            var useRequestAborted = !cancellationToken.CanBeCanceled;
+            var localCancel = useRequestAborted ? response.HttpContext.RequestAborted : cancellationToken;
+
+            var fileStream = new FileStream(
                 filePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite,
                 bufferSize: BufferSize,
                 options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-            fileStream.Seek(offset, SeekOrigin.Begin);
-            await StreamCopyOperation
-                .CopyToAsync(fileStream, response.Body, count, BufferSize, CancellationToken.None)
-                .ConfigureAwait(true);
+            await using (fileStream.ConfigureAwait(false))
+            {
+                try
+                {
+                    localCancel.ThrowIfCancellationRequested();
+                    fileStream.Seek(offset, SeekOrigin.Begin);
+                    await StreamCopyOperation
+                        .CopyToAsync(fileStream, response.Body, count, BufferSize, localCancel)
+                        .ConfigureAwait(true);
+                }
+                catch (OperationCanceledException) when (useRequestAborted)
+                {
+                }
+            }
         }
 
         private static bool IsSymLink(string path) => (File.GetAttributes(path) & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;

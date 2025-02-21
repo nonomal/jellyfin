@@ -15,7 +15,7 @@ namespace MediaBrowser.LocalMetadata.Parsers
         /// <summary>
         /// Initializes a new instance of the <see cref="BoxSetXmlParser"/> class.
         /// </summary>
-        /// <param name="logger">Instance of the <see cref="ILogger{BoxSetXmlParset}"/> interface.</param>
+        /// <param name="logger">Instance of the <see cref="ILogger{BoxSetXmlParser}"/> interface.</param>
         /// <param name="providerManager">Instance of the <see cref="IProviderManager"/> interface.</param>
         public BoxSetXmlParser(ILogger<BoxSetXmlParser> logger, IProviderManager providerManager)
             : base(logger, providerManager)
@@ -71,7 +71,7 @@ namespace MediaBrowser.LocalMetadata.Parsers
                                 {
                                     var child = GetLinkedChild(subReader);
 
-                                    if (child != null)
+                                    if (child is not null)
                                     {
                                         list.Add(child);
                                     }

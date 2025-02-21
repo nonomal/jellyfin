@@ -5,6 +5,7 @@ using MediaBrowser.Controller.Drawing;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.IO;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -17,10 +18,10 @@ public class MovieResolverTests
     [Fact]
     public void Resolve_GivenLocalAlternateVersion_ResolvesToVideo()
     {
-        var movieResolver = new MovieResolver(Mock.Of<IImageProcessor>(), _namingOptions);
+        var movieResolver = new MovieResolver(Mock.Of<IImageProcessor>(), Mock.Of<ILogger<MovieResolver>>(), _namingOptions, Mock.Of<IDirectoryService>());
         var itemResolveArgs = new ItemResolveArgs(
             Mock.Of<IServerApplicationPaths>(),
-            Mock.Of<IDirectoryService>())
+            null)
         {
             Parent = null,
             FileInfo = new FileSystemMetadata

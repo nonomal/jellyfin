@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -39,19 +39,19 @@ public class KeyframeExtractionScheduledTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Keyframe Extractor";
+    public string Name => _localizationManager.GetLocalizedString("TaskKeyframeExtractor");
 
     /// <inheritdoc />
     public string Key => "KeyframeExtraction";
 
     /// <inheritdoc />
-    public string Description => "Extracts keyframes from video files to create more precise HLS playlists. This task may run for a long time.";
+    public string Description => _localizationManager.GetLocalizedString("TaskKeyframeExtractorDescription");
 
     /// <inheritdoc />
     public string Category => _localizationManager.GetLocalizedString("TasksLibraryCategory");
 
     /// <inheritdoc />
-    public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
+    public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var query = new InternalItemsQuery
         {

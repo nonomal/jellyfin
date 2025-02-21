@@ -1,13 +1,12 @@
-#nullable disable
-
-#pragma warning disable CS1591
-
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Dto;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
@@ -19,10 +18,22 @@ using Microsoft.Extensions.Logging;
 
 namespace MediaBrowser.Providers.TV
 {
+    /// <summary>
+    /// Service to manage series metadata.
+    /// </summary>
     public class SeriesMetadataService : MetadataService<Series, SeriesInfo>
     {
         private readonly ILocalizationManager _localizationManager;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SeriesMetadataService"/> class.
+        /// </summary>
+        /// <param name="serverConfigurationManager">Instance of the <see cref="IServerConfigurationManager"/> interface.</param>
+        /// <param name="logger">Instance of the <see cref="ILogger{SeasonMetadataService}"/> interface.</param>
+        /// <param name="providerManager">Instance of the <see cref="IProviderManager"/> interface.</param>
+        /// <param name="fileSystem">Instance of the <see cref="IFileSystem"/> interface.</param>
+        /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+        /// <param name="localizationManager">Instance of the <see cref="ILocalizationManager"/> interface.</param>
         public SeriesMetadataService(
             IServerConfigurationManager serverConfigurationManager,
             ILogger<SeriesMetadataService> logger,
@@ -36,28 +47,33 @@ namespace MediaBrowser.Providers.TV
         }
 
         /// <inheritdoc />
+        public override async Task<ItemUpdateType> RefreshMetadata(BaseItem item, MetadataRefreshOptions refreshOptions, CancellationToken cancellationToken)
+        {
+            if (item is Series series)
+            {
+                var seasons = series.GetRecursiveChildren(i => i is Season).ToList();
+
+                foreach (var season in seasons)
+                {
+                    var hasUpdate = refreshOptions != null && season.BeforeMetadataRefresh(refreshOptions.ReplaceAllMetadata);
+                    if (hasUpdate)
+                    {
+                        await season.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            return await base.RefreshMetadata(item, refreshOptions, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
         protected override async Task AfterMetadataRefresh(Series item, MetadataRefreshOptions refreshOptions, CancellationToken cancellationToken)
         {
             await base.AfterMetadataRefresh(item, refreshOptions, cancellationToken).ConfigureAwait(false);
 
+            RemoveObsoleteEpisodes(item);
             RemoveObsoleteSeasons(item);
-            await FillInMissingSeasonsAsync(item, cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <inheritdoc />
-        protected override bool IsFullLocalMetadata(Series item)
-        {
-            if (string.IsNullOrWhiteSpace(item.Overview))
-            {
-                return false;
-            }
-
-            if (!item.ProductionYear.HasValue)
-            {
-                return false;
-            }
-
-            return base.IsFullLocalMetadata(item);
+            await CreateSeasonsAsync(item, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -78,7 +94,7 @@ namespace MediaBrowser.Providers.TV
                 targetItem.Status = sourceItem.Status;
             }
 
-            if (replaceData || targetItem.AirDays == null || targetItem.AirDays.Length == 0)
+            if (replaceData || targetItem.AirDays is null || targetItem.AirDays.Length == 0)
             {
                 targetItem.AirDays = sourceItem.AirDays;
             }
@@ -86,7 +102,7 @@ namespace MediaBrowser.Providers.TV
 
         private void RemoveObsoleteSeasons(Series series)
         {
-            // TODO Legacy. It's not really "physical" seasons as any virtual seasons are always converted to non-virtual in FillInMissingSeasonsAsync.
+            // TODO Legacy. It's not really "physical" seasons as any virtual seasons are always converted to non-virtual in CreateSeasonsAsync.
             var physicalSeasonNumbers = new HashSet<int>();
             var virtualSeasons = new List<Season>();
             foreach (var existingSeason in series.Children.OfType<Season>())
@@ -106,7 +122,7 @@ namespace MediaBrowser.Providers.TV
                 var seasonNumber = virtualSeason.IndexNumber;
                 // If there's a physical season with the same number or no episodes in the season, delete it
                 if ((seasonNumber.HasValue && physicalSeasonNumbers.Contains(seasonNumber.Value))
-                    || !virtualSeason.GetEpisodes().Any())
+                    || virtualSeason.GetEpisodes().Count == 0)
                 {
                     Logger.LogInformation("Removing virtual season {SeasonNumber} in series {SeriesName}", virtualSeason.IndexNumber, series.Name);
 
@@ -114,45 +130,105 @@ namespace MediaBrowser.Providers.TV
                         virtualSeason,
                         new DeleteOptions
                         {
-                            DeleteFileLocation = true
+                            // Internal metadata paths are removed regardless of this.
+                            DeleteFileLocation = false
                         },
                         false);
                 }
             }
         }
 
+        private void RemoveObsoleteEpisodes(Series series)
+        {
+            var episodesBySeason = series.GetEpisodes(null, new DtoOptions(), true)
+                            .OfType<Episode>()
+                            .GroupBy(e => e.ParentIndexNumber)
+                            .ToList();
+
+            foreach (var seasonEpisodes in episodesBySeason)
+            {
+                List<Episode> nonPhysicalEpisodes = [];
+                List<Episode> physicalEpisodes = [];
+                foreach (var episode in seasonEpisodes)
+                {
+                    if (episode.IsVirtualItem || episode.IsMissingEpisode)
+                    {
+                        nonPhysicalEpisodes.Add(episode);
+                        continue;
+                    }
+
+                    physicalEpisodes.Add(episode);
+                }
+
+                // Only consider non-physical episodes
+                foreach (var episode in nonPhysicalEpisodes)
+                {
+                    // Episodes without an episode number are practically orphaned and should be deleted
+                    // Episodes with a physical equivalent should be deleted (they are no longer missing)
+                    var shouldKeep = episode.IndexNumber.HasValue && !physicalEpisodes.Any(e => e.ContainsEpisodeNumber(episode.IndexNumber.Value));
+
+                    if (shouldKeep)
+                    {
+                        continue;
+                    }
+
+                    DeleteEpisode(episode);
+                }
+            }
+        }
+
+        private void DeleteEpisode(Episode episode)
+        {
+            Logger.LogInformation(
+                "Removing virtual episode S{SeasonNumber}E{EpisodeNumber} in series {SeriesName}",
+                episode.ParentIndexNumber,
+                episode.IndexNumber,
+                episode.SeriesName);
+
+            LibraryManager.DeleteItem(
+                episode,
+                new DeleteOptions
+                {
+                    // Internal metadata paths are removed regardless of this.
+                    DeleteFileLocation = false
+                },
+                false);
+        }
+
         /// <summary>
-        /// Creates seasons for all episodes that aren't in a season folder.
+        /// Creates seasons for all episodes if they don't exist.
         /// If no season number can be determined, a dummy season will be created.
         /// </summary>
         /// <param name="series">The series.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The async task.</returns>
-        private async Task FillInMissingSeasonsAsync(Series series, CancellationToken cancellationToken)
+        private async Task CreateSeasonsAsync(Series series, CancellationToken cancellationToken)
         {
             var seriesChildren = series.GetRecursiveChildren(i => i is Episode || i is Season);
-            var episodesInSeriesFolder = seriesChildren
+            var seasons = seriesChildren.OfType<Season>().ToList();
+            var uniqueSeasonNumbers = seriesChildren
                 .OfType<Episode>()
-                .Where(i => !i.IsInSeasonFolder);
-
-            List<Season> seasons = seriesChildren.OfType<Season>().ToList();
+                .Select(e => e.ParentIndexNumber >= 0 ? e.ParentIndexNumber : null)
+                .Distinct();
 
             // Loop through the unique season numbers
-            foreach (var episode in episodesInSeriesFolder)
+            foreach (var seasonNumber in uniqueSeasonNumbers)
             {
                 // Null season numbers will have a 'dummy' season created because seasons are always required.
-                var seasonNumber = episode.ParentIndexNumber >= 0 ? episode.ParentIndexNumber : null;
                 var existingSeason = seasons.FirstOrDefault(i => i.IndexNumber == seasonNumber);
-
-                if (existingSeason == null)
+                if (existingSeason is null)
                 {
-                    var season = await CreateSeasonAsync(series, seasonNumber, cancellationToken).ConfigureAwait(false);
-                    seasons.Add(season);
+                    var seasonName = GetValidSeasonNameForSeries(series, null, seasonNumber);
+                    await CreateSeasonAsync(series, seasonName, seasonNumber, cancellationToken).ConfigureAwait(false);
                 }
                 else if (existingSeason.IsVirtualItem)
                 {
-                    existingSeason.IsVirtualItem = false;
-                    await existingSeason.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    var episodeCount = seriesChildren.OfType<Episode>().Count(e => e.ParentIndexNumber == seasonNumber && !e.IsMissingEpisode);
+                    if (episodeCount > 0)
+                    {
+                        existingSeason.IsVirtualItem = false;
+                        await existingSeason.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    }
                 }
             }
         }
@@ -161,21 +237,16 @@ namespace MediaBrowser.Providers.TV
         /// Creates a new season, adds it to the database by linking it to the [series] and refreshes the metadata.
         /// </summary>
         /// <param name="series">The series.</param>
+        /// <param name="seasonName">The season name.</param>
         /// <param name="seasonNumber">The season number.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>The newly created season.</returns>
-        private async Task<Season> CreateSeasonAsync(
+        private async Task CreateSeasonAsync(
             Series series,
+            string? seasonName,
             int? seasonNumber,
             CancellationToken cancellationToken)
         {
-            string seasonName = seasonNumber switch
-            {
-                null => _localizationManager.GetLocalizedString("NameSeasonUnknown"),
-                0 => LibraryManager.GetLibraryOptions(series).SeasonZeroDisplayName,
-                _ => string.Format(CultureInfo.InvariantCulture, _localizationManager.GetLocalizedString("NameSeasonNumber"), seasonNumber.Value)
-            };
-
             Logger.LogInformation("Creating Season {SeasonName} entry for {SeriesName}", seasonName, series.Name);
 
             var season = new Season
@@ -187,14 +258,27 @@ namespace MediaBrowser.Providers.TV
                     typeof(Season)),
                 IsVirtualItem = false,
                 SeriesId = series.Id,
-                SeriesName = series.Name
+                SeriesName = series.Name,
+                SeriesPresentationUniqueKey = series.GetPresentationUniqueKey()
             };
 
             series.AddChild(season);
-
             await season.RefreshMetadata(new MetadataRefreshOptions(new DirectoryService(FileSystem)), cancellationToken).ConfigureAwait(false);
+        }
 
-            return season;
+        private string GetValidSeasonNameForSeries(Series series, string? seasonName, int? seasonNumber)
+        {
+            if (string.IsNullOrEmpty(seasonName))
+            {
+                seasonName = seasonNumber switch
+                {
+                    null => _localizationManager.GetLocalizedString("NameSeasonUnknown"),
+                    0 => LibraryManager.GetLibraryOptions(series).SeasonZeroDisplayName,
+                    _ => string.Format(CultureInfo.InvariantCulture, _localizationManager.GetLocalizedString("NameSeasonNumber"), seasonNumber.Value)
+                };
+            }
+
+            return seasonName;
         }
     }
 }

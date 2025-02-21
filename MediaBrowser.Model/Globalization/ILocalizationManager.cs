@@ -30,8 +30,9 @@ namespace MediaBrowser.Model.Globalization
         /// Gets the rating level.
         /// </summary>
         /// <param name="rating">The rating.</param>
+        /// <param name="countryCode">The optional two letter ISO language string.</param>
         /// <returns><see cref="int" /> or <c>null</c>.</returns>
-        int? GetRatingLevel(string rating);
+        int? GetRatingLevel(string rating, string? countryCode = null);
 
         /// <summary>
         /// Gets the localized string.
@@ -51,7 +52,7 @@ namespace MediaBrowser.Model.Globalization
         /// <summary>
         /// Gets the localization options.
         /// </summary>
-        /// <returns><see cref="IEnumerable{LocalizatonOption}" />.</returns>
+        /// <returns><see cref="IEnumerable{LocalizationOption}" />.</returns>
         IEnumerable<LocalizationOption> GetLocalizationOptions();
 
         /// <summary>

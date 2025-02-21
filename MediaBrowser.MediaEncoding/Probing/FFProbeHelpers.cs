@@ -15,22 +15,19 @@ namespace MediaBrowser.MediaEncoding.Probing
         /// <param name="result">The result.</param>
         public static void NormalizeFFProbeResult(InternalMediaInfoResult result)
         {
-            if (result == null)
-            {
-                throw new ArgumentNullException(nameof(result));
-            }
+            ArgumentNullException.ThrowIfNull(result);
 
-            if (result.Format?.Tags != null)
+            if (result.Format?.Tags is not null)
             {
                 result.Format.Tags = ConvertDictionaryToCaseInsensitive(result.Format.Tags);
             }
 
-            if (result.Streams != null)
+            if (result.Streams is not null)
             {
-                // Convert all dictionaries to case insensitive
+                // Convert all dictionaries to case-insensitive
                 foreach (var stream in result.Streams)
                 {
-                    if (stream.Tags != null)
+                    if (stream.Tags is not null)
                     {
                         stream.Tags = ConvertDictionaryToCaseInsensitive(stream.Tags);
                     }
@@ -73,7 +70,7 @@ namespace MediaBrowser.MediaEncoding.Probing
         }
 
         /// <summary>
-        /// Converts a dictionary to case insensitive.
+        /// Converts a dictionary to case-insensitive.
         /// </summary>
         /// <param name="dict">The dict.</param>
         /// <returns>Dictionary{System.StringSystem.String}.</returns>

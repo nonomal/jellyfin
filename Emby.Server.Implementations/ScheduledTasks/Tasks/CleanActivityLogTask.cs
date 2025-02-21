@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Configuration;
@@ -57,12 +56,12 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
         public bool IsLogged => true;
 
         /// <inheritdoc />
-        public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
+        public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
             var retentionDays = _serverConfigurationManager.Configuration.ActivityLogRetentionDays;
             if (!retentionDays.HasValue || retentionDays < 0)
             {
-                throw new Exception($"Activity Log Retention days must be at least 0. Currently: {retentionDays}");
+                throw new InvalidOperationException($"Activity Log Retention days must be at least 0. Currently: {retentionDays}");
             }
 
             var startDate = DateTime.UtcNow.AddDays(-retentionDays.Value);
@@ -72,7 +71,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
         /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            return Enumerable.Empty<TaskTriggerInfo>();
+            return [];
         }
     }
 }

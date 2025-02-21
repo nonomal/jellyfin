@@ -68,14 +68,17 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
 
                 var path = GetAlbumInfoPath(_config.ApplicationPaths, id);
 
-                await using FileStream jsonStream = AsyncFile.OpenRead(path);
-                var obj = await JsonSerializer.DeserializeAsync<RootObject>(jsonStream, _jsonOptions, cancellationToken).ConfigureAwait(false);
-
-                if (obj != null && obj.album != null && obj.album.Count > 0)
+                FileStream jsonStream = AsyncFile.OpenRead(path);
+                await using (jsonStream.ConfigureAwait(false))
                 {
-                    result.Item = new MusicAlbum();
-                    result.HasMetadata = true;
-                    ProcessResult(result.Item, obj.album[0], info.MetadataLanguage);
+                    var obj = await JsonSerializer.DeserializeAsync<RootObject>(jsonStream, _jsonOptions, cancellationToken).ConfigureAwait(false);
+
+                    if (obj is not null && obj.album is not null && obj.album.Count > 0)
+                    {
+                        result.Item = new MusicAlbum();
+                        result.HasMetadata = true;
+                        ProcessResult(result.Item, obj.album[0], info.MetadataLanguage);
+                    }
                 }
             }
 
@@ -145,21 +148,19 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
             item.Overview = (overview ?? string.Empty).StripHtml();
         }
 
-        internal Task EnsureInfo(string musicBrainzReleaseGroupId, CancellationToken cancellationToken)
+        internal async Task EnsureInfo(string musicBrainzReleaseGroupId, CancellationToken cancellationToken)
         {
             var xmlPath = GetAlbumInfoPath(_config.ApplicationPaths, musicBrainzReleaseGroupId);
 
             var fileInfo = _fileSystem.GetFileSystemInfo(xmlPath);
 
-            if (fileInfo.Exists)
+            if (fileInfo.Exists
+                && (DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= 2)
             {
-                if ((DateTime.UtcNow - _fileSystem.GetLastWriteTimeUtc(fileInfo)).TotalDays <= 2)
-                {
-                    return Task.CompletedTask;
-                }
+                return;
             }
 
-            return DownloadInfo(musicBrainzReleaseGroupId, cancellationToken);
+            await DownloadInfo(musicBrainzReleaseGroupId, cancellationToken).ConfigureAwait(false);
         }
 
         internal async Task DownloadInfo(string musicBrainzReleaseGroupId, CancellationToken cancellationToken)
@@ -173,13 +174,13 @@ namespace MediaBrowser.Providers.Plugins.AudioDb
             Directory.CreateDirectory(Path.GetDirectoryName(path));
 
             using var response = await _httpClientFactory.CreateClient(NamedClient.Default).GetAsync(url, cancellationToken).ConfigureAwait(false);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
             var fileStreamOptions = AsyncFile.WriteOptions;
             fileStreamOptions.Mode = FileMode.Create;
-            fileStreamOptions.PreallocationSize = stream.Length;
-            await using var xmlFileStream = new FileStream(path, fileStreamOptions);
-            await stream.CopyToAsync(xmlFileStream, cancellationToken).ConfigureAwait(false);
+            var fs = new FileStream(path, fileStreamOptions);
+            await using (fs.ConfigureAwait(false))
+            {
+                await response.Content.CopyToAsync(fs, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         private static string GetAlbumDataPath(IApplicationPaths appPaths, string musicBrainzReleaseGroupId)

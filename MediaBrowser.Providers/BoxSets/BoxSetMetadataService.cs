@@ -39,7 +39,7 @@ namespace MediaBrowser.Providers.BoxSets
         protected override bool EnableUpdatingPremiereDateFromChildren => true;
 
         /// <inheritdoc />
-        protected override IList<BaseItem> GetChildrenForMetadataUpdates(BoxSet item)
+        protected override IReadOnlyList<BaseItem> GetChildrenForMetadataUpdates(BoxSet item)
         {
             return item.GetLinkedChildren();
         }
@@ -54,7 +54,14 @@ namespace MediaBrowser.Providers.BoxSets
 
             if (mergeMetadataSettings)
             {
-                targetItem.LinkedChildren = sourceItem.LinkedChildren;
+                if (replaceData || targetItem.LinkedChildren.Length == 0)
+                {
+                    targetItem.LinkedChildren = sourceItem.LinkedChildren;
+                }
+                else
+                {
+                    targetItem.LinkedChildren = sourceItem.LinkedChildren.Concat(targetItem.LinkedChildren).Distinct().ToArray();
+                }
             }
         }
 
@@ -66,7 +73,7 @@ namespace MediaBrowser.Providers.BoxSets
             var libraryFolderIds = item.GetLibraryFolderIds();
 
             var itemLibraryFolderIds = item.LibraryFolderIds;
-            if (itemLibraryFolderIds == null || !libraryFolderIds.SequenceEqual(itemLibraryFolderIds))
+            if (itemLibraryFolderIds is null || !libraryFolderIds.SequenceEqual(itemLibraryFolderIds))
             {
                 item.LibraryFolderIds = libraryFolderIds;
                 updatedType |= ItemUpdateType.MetadataImport;

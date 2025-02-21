@@ -5,8 +5,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using Diacritics.Extensions;
 using Jellyfin.Data.Enums;
+using Jellyfin.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace MediaBrowser.Controller.Entities
@@ -14,6 +14,7 @@ namespace MediaBrowser.Controller.Entities
     /// <summary>
     /// Class Genre.
     /// </summary>
+    [Common.RequiresSourceSerialisation]
     public class Genre : BaseItem, IItemByName
     {
         /// <summary>
@@ -61,7 +62,7 @@ namespace MediaBrowser.Controller.Entities
             return false;
         }
 
-        public IList<BaseItem> GetTaggedItems(InternalItemsQuery query)
+        public IReadOnlyList<BaseItem> GetTaggedItems(InternalItemsQuery query)
         {
             query.GenreIds = new[] { Id };
             query.ExcludeItemTypes = new[]

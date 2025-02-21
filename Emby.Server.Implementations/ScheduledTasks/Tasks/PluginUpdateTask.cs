@@ -1,5 +1,3 @@
-#pragma warning disable CS1591
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -19,14 +17,17 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
     /// </summary>
     public class PluginUpdateTask : IScheduledTask, IConfigurableScheduledTask
     {
-        /// <summary>
-        /// The _logger.
-        /// </summary>
         private readonly ILogger<PluginUpdateTask> _logger;
 
         private readonly IInstallationManager _installationManager;
         private readonly ILocalizationManager _localization;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PluginUpdateTask" /> class.
+        /// </summary>
+        /// <param name="logger">Instance of the <see cref="ILogger"/> interface.</param>
+        /// <param name="installationManager">Instance of the <see cref="IInstallationManager"/> interface.</param>
+        /// <param name="localization">Instance of the <see cref="ILocalizationManager"/> interface.</param>
         public PluginUpdateTask(ILogger<PluginUpdateTask> logger, IInstallationManager installationManager, ILocalizationManager localization)
         {
             _logger = logger;
@@ -55,26 +56,18 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
         /// <inheritdoc />
         public bool IsLogged => true;
 
-        /// <summary>
-        /// Creates the triggers that define when the task will run.
-        /// </summary>
-        /// <returns>IEnumerable{BaseTaskTrigger}.</returns>
+        /// <inheritdoc />
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
             // At startup
-            yield return new TaskTriggerInfo { Type = TaskTriggerInfo.TriggerStartup };
+            yield return new TaskTriggerInfo { Type = TaskTriggerInfoType.StartupTrigger };
 
             // Every so often
-            yield return new TaskTriggerInfo { Type = TaskTriggerInfo.TriggerInterval, IntervalTicks = TimeSpan.FromHours(24).Ticks };
+            yield return new TaskTriggerInfo { Type = TaskTriggerInfoType.IntervalTrigger, IntervalTicks = TimeSpan.FromHours(24).Ticks };
         }
 
-        /// <summary>
-        /// Update installed plugins.
-        /// </summary>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        /// <param name="progress">The progress.</param>
-        /// <returns><see cref="Task" />.</returns>
-        public async Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
+        /// <inheritdoc />
+        public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
             progress.Report(0);
 
@@ -95,7 +88,7 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
                 }
                 catch (OperationCanceledException)
                 {
-                    // InstallPackage has it's own inner cancellation token, so only throw this if it's ours
+                    // InstallPackage has its own inner cancellation token, so only throw this if it's ours
                     if (cancellationToken.IsCancellationRequested)
                     {
                         throw;
@@ -106,6 +99,10 @@ namespace Emby.Server.Implementations.ScheduledTasks.Tasks
                     _logger.LogError(ex, "Error downloading {0}", package.Name);
                 }
                 catch (IOException ex)
+                {
+                    _logger.LogError(ex, "Error updating {0}", package.Name);
+                }
+                catch (InvalidDataException ex)
                 {
                     _logger.LogError(ex, "Error updating {0}", package.Name);
                 }

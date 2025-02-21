@@ -32,6 +32,7 @@ namespace MediaBrowser.LocalMetadata.Images
             "folder",
             "poster",
             "cover",
+            "jacket",
             "default"
         };
 
@@ -94,7 +95,7 @@ namespace MediaBrowser.LocalMetadata.Images
             {
                 var season = item as Season;
                 var series = season?.Series;
-                if (series != null && series.IsFileProtocol)
+                if (series is not null && series.IsFileProtocol)
                 {
                     return true;
                 }
@@ -319,7 +320,7 @@ namespace MediaBrowser.LocalMetadata.Images
                 {
                     AddImage(files, images, name + "-fanart", ImageType.Backdrop, imagePrefix);
 
-                    // Support without the prefix if it's in it's own folder
+                    // Support without the prefix if it's in its own folder
                     if (!isInMixedFolder)
                     {
                         AddImage(files, images, name + "-fanart", ImageType.Backdrop);
@@ -334,7 +335,7 @@ namespace MediaBrowser.LocalMetadata.Images
             var extraFanartFolder = files
                 .FirstOrDefault(i => string.Equals(i.Name, "extrafanart", StringComparison.OrdinalIgnoreCase));
 
-            if (extraFanartFolder != null)
+            if (extraFanartFolder is not null)
             {
                 PopulateBackdropsFromExtraFanart(extraFanartFolder.FullName, images);
             }
@@ -453,7 +454,7 @@ namespace MediaBrowser.LocalMetadata.Images
         {
             var image = GetImage(files, name, prefix);
 
-            if (image == null)
+            if (image is null)
             {
                 return false;
             }

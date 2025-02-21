@@ -1,5 +1,7 @@
 using System.IO;
+using System.Threading.Tasks;
 using System.Xml;
+using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -43,14 +45,16 @@ namespace MediaBrowser.LocalMetadata.Savers
         }
 
         /// <inheritdoc />
-        protected override void WriteCustomElements(BaseItem item, XmlWriter writer)
+        protected override async Task WriteCustomElementsAsync(BaseItem item, XmlWriter writer)
         {
             var game = (Playlist)item;
 
-            if (!string.IsNullOrEmpty(game.PlaylistMediaType))
+            if (game.PlaylistMediaType == MediaType.Unknown)
             {
-                writer.WriteElementString("PlaylistMediaType", game.PlaylistMediaType);
+                return;
             }
+
+            await writer.WriteElementStringAsync(null, "PlaylistMediaType", null, game.PlaylistMediaType.ToString()).ConfigureAwait(false);
         }
 
         /// <inheritdoc />

@@ -10,8 +10,6 @@ namespace MediaBrowser.Model.IO
     /// </summary>
     public interface IFileSystem
     {
-        void AddShortcutHandler(IShortcutHandler handler);
-
         /// <summary>
         /// Determines whether the specified filename is shortcut.
         /// </summary>
@@ -34,6 +32,13 @@ namespace MediaBrowser.Model.IO
         void CreateShortcut(string shortcutPath, string target);
 
         string MakeAbsolutePath(string folderPath, string filePath);
+
+        /// <summary>
+        /// Moves a directory to a new location.
+        /// </summary>
+        /// <param name="source">Source directory.</param>
+        /// <param name="destination">Destination directory.</param>
+        void MoveDirectory(string source, string destination);
 
         /// <summary>
         /// Returns a <see cref="FileSystemMetadata" /> object for the specified file or directory path.
@@ -117,13 +122,6 @@ namespace MediaBrowser.Model.IO
         bool ContainsSubPath(string parentPath, string path);
 
         /// <summary>
-        /// Normalizes the path.
-        /// </summary>
-        /// <param name="path">The path.</param>
-        /// <returns>System.String.</returns>
-        string NormalizePath(string path);
-
-        /// <summary>
         /// Gets the file name without extension.
         /// </summary>
         /// <param name="info">The information.</param>
@@ -147,7 +145,7 @@ namespace MediaBrowser.Model.IO
         /// Gets the directories.
         /// </summary>
         /// <param name="path">The path.</param>
-        /// <param name="recursive">If set to <c>true</c> also searches in subdirectiories.</param>
+        /// <param name="recursive">If set to <c>true</c> also searches in subdirectories.</param>
         /// <returns>All found directories.</returns>
         IEnumerable<FileSystemMetadata> GetDirectories(string path, bool recursive = false);
 
@@ -155,7 +153,7 @@ namespace MediaBrowser.Model.IO
         /// Gets the files.
         /// </summary>
         /// <param name="path">The path in which to search.</param>
-        /// <param name="recursive">If set to <c>true</c> also searches in subdirectiories.</param>
+        /// <param name="recursive">If set to <c>true</c> also searches in subdirectories.</param>
         /// <returns>All found files.</returns>
         IEnumerable<FileSystemMetadata> GetFiles(string path, bool recursive = false);
 
@@ -199,6 +197,20 @@ namespace MediaBrowser.Model.IO
 
         void SetAttributes(string path, bool isHidden, bool readOnly);
 
-        List<FileSystemMetadata> GetDrives();
+        IEnumerable<FileSystemMetadata> GetDrives();
+
+        /// <summary>
+        /// Determines whether the directory exists.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <returns>Whether the path exists.</returns>
+        bool DirectoryExists(string path);
+
+        /// <summary>
+        /// Determines whether the file exists.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <returns>Whether the path exists.</returns>
+        bool FileExists(string path);
     }
 }
